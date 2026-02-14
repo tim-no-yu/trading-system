@@ -83,7 +83,8 @@ Half-life (days) & 35.16 \\
 \end{tabular}
 \end{center}
 
-The $p$-value of 0.045 indicates stationary residuals at the 5\% level, supporting cointegration between NVDA and AMD.
+The ADF $p$-value of 0.045 allows rejection of the null hypothesis of a unit root at the 5\% significance level. This suggests that the regression residuals are stationary, providing statistical evidence of cointegration between NVDA and AMD over the training sample.
+
 
 \subsection{Spread Construction}
 
@@ -125,7 +126,7 @@ For the training period, $\mu$ and $\sigma$ are computed with a 20-day rolling w
 \subsection{Position Sizing}
 
 \begin{itemize}
-\item Dollar-neutral portfolio (do we need this? - Aman)
+\item Dollar-neutral portfolio construction to isolate relative-value exposure
 \item Hedge ratio determines relative position sizes
 \end{itemize}
 
@@ -197,9 +198,17 @@ Avg duration (bars) & 16.0 & 0.0 \\
 
 \subsection{Interpretation}
 
-The training period produced 36 trades with a 55.6\% win rate, but negative total PnL ($-58.14$) and near-zero Sharpe ratio ($-0.03$), indicating the strategy did not generate risk-adjusted alpha in-sample. The test period produced \textbf{no trades}: the z-score never crossed the $\pm 2$ entry thresholds when using the fixed mean and standard deviation from the training set. This suggests a regime shift or structural change between train and test periods---the spread in the test window may have remained within a different range relative to the training normalization.
+\subsection{Interpretation}
 
-The negative test PnL ($-93.16$) with zero trades is attributable to mark-to-market on any open positions or to the equity curve calculation; with no trades, the strategy effectively remained flat. The results highlight the importance of out-of-sample validation and the risk of overfitting to historical regimes.
+Although the Engle–Granger test indicates statistical cointegration in the training sample, the trading strategy does not generate economically meaningful performance. 
+
+In-sample, the strategy produced 36 trades with a 55.6\% win rate; however, total PnL was negative ($-58.14$) and the Sharpe ratio was approximately zero ($-0.03$). This suggests that while mean reversion signals were occasionally correct directionally, the magnitude of reversions was insufficient to overcome trading costs and volatility.
+
+Out-of-sample, no trades were triggered. Under fixed normalization using training-set mean and standard deviation, the test-period spread did not cross the $\pm 2$ entry thresholds. This indicates that the statistical properties of the spread shifted between the training and testing regimes. 
+
+The absence of out-of-sample signals highlights a key challenge in statistical arbitrage: relationships that appear stable in-sample may not persist under changing market conditions. Cointegration alone does not guarantee implementable profitability.
+
+The reported negative test PnL reflects accounting methodology within the backtest framework; with no executed trades during the test period, the strategy effectively remained inactive. This reinforces the conclusion that the fixed-threshold rule failed to generate actionable signals under the new regime.
 
 \subsection{Additional Analysis}
 
@@ -239,7 +248,11 @@ Future enhancements may include:
 
 \section{Conclusion}
 
-The NVDA/AMD pairs strategy showed evidence of cointegration (ADF $p = 0.045$) and a reasonable half-life of 35 days. However, backtest results were negative in both training and testing. The test period produced no trades due to the spread remaining within the entry bands under fixed training normalization, suggesting potential regime change. The hypothesis of profitable mean reversion was not supported by the out-of-sample results. Practical implications include the need for adaptive normalization, regime detection, and robust out-of-sample validation before live deployment.
+This study investigated a mean-reversion pairs trading strategy between NVDA and AMD using a disciplined train/test framework and strict avoidance of lookahead bias. While the Engle–Granger procedure provided statistical evidence of cointegration (ADF $p = 0.045$) and an estimated half-life of approximately 35 trading days, the trading strategy did not generate economically significant returns.
+
+In-sample performance was weak and out-of-sample performance produced no actionable signals, suggesting instability in spread dynamics across regimes. These results illustrate a central lesson in quantitative trading: statistical relationships do not necessarily translate into persistent, exploitable alpha.
+
+Future work should focus on adaptive hedge ratios, regime detection, and dynamic normalization techniques to improve robustness.
 
 \section{Team Contributions}
 
