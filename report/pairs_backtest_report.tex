@@ -1,0 +1,260 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\title{Mean Reversion Pairs Trading Strategy:\\
+NVIDIA (NVDA) vs AMD}
+\author{Aman Thawani, Thomas Roper, Adarsh Kalyan, Tim Yu, Angelo Torres}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introduction and Motivation}
+
+Pairs trading is a market-neutral strategy that exploits temporary deviations 
+between two historically related assets. The core assumption with this strategy is that the  
+relationship between the prices of the two assets exhibits mean-reverting behavior.
+
+This project investigates a pairs trading strategy using NVIDIA (NVDA) and 
+Advanced Micro Devices (AMD), two semiconductor companies with similar industry 
+exposure. Due to shared sector drivers such as GPU demand, AI development, and 
+data center growth, their stock prices often move together. Temporary divergences 
+may therefore create trading opportunities.
+
+\textbf{Hypothesis:} Deviations in the relative pricing between NVDA and AMD will 
+revert toward equilibrium over time, allowing profitable mean-reversion trades.
+
+\section{Instruments and Data}
+
+\begin{itemize}
+\item Assets traded: NVDA and AMD equities
+\item Data source: Alpaca API (daily adjusted closing prices)
+\item Training period: 2021-02-16 to 2024-08-13 (879 daily observations)
+\item Testing period: 2024-08-14 to 2026-02-13 (377 daily observations)
+\item Frequency: Daily observations
+\item Split: Chronological 70/30 train/test
+\end{itemize}
+
+\section{Exploratory Data Analysis}
+
+\subsection{Price Behavior}
+
+Include:
+
+\begin{itemize}
+\item Normalized price comparison (can be done using z-scores)
+\item Rolling correlation analysis
+\item Volatility comparison
+\end{itemize}
+
+\subsection{Stationarity and Cointegration}
+
+We evaluate whether a stationary relationship exists between the two assets.
+
+\begin{itemize}
+\item Augmented Dickey-Fuller (ADF) test on regression residuals
+\item Residual analysis and half-life of mean reversion
+\end{itemize}
+
+\textbf{Regression Results (Training Set):}
+
+We estimate the hedge ratio $\beta$ via OLS: $\text{NVDA}_t = \alpha + \beta \cdot \text{AMD}_t$.
+
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+$\beta$ & 3.373197 \\
+ADF stat & $-2.9006$ \\
+$p$-value & 0.045278 \\
+Half-life (days) & 35.16 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The $p$-value of 0.045 indicates stationary residuals at the 5\% level, supporting cointegration between NVDA and AMD.
+
+\subsection{Spread Construction}
+
+We estimate a hedge ratio using linear regression on the training set only:
+
+\[
+S_t = P_{\text{NVDA},t} - \beta P_{\text{AMD},t}
+\]
+
+where $S_t$ represents the spread at time $t$ and $\beta = 3.37$ (fixed from training).
+
+We then compute the z-score using rolling mean and standard deviation from the training window only (no lookahead):
+
+\[
+Z_t = \frac{S_t - \mu}{\sigma}
+\]
+
+For the training period, $\mu$ and $\sigma$ are computed with a 20-day rolling window and shifted by one period to avoid lookahead. For the test period, we use the fixed mean and standard deviation from the full training set.
+
+\section{Strategy/Algorithm Design}
+
+\subsection{Trading Signals}
+
+\textbf{Entry Rules}
+
+\begin{itemize}
+\item Long spread when $Z_t < -2$
+\item Short spread when $Z_t > 2$
+\end{itemize}
+
+\textbf{Exit Rules}
+
+\begin{itemize}
+\item Close positions whenever $Z_t$ returns to 0 (or crosses 0)
+
+\textit{Note: equivalent condition here is} $Z_t \cdot Z_{t-1} \le 0$
+\end{itemize}
+
+\subsection{Position Sizing}
+
+\begin{itemize}
+\item Dollar-neutral portfolio (do we need this? - Aman)
+\item Hedge ratio determines relative position sizes
+\end{itemize}
+
+\subsection{Risk Management}
+
+\begin{itemize}
+\item Stop-loss thresholds
+\item Maximum holding period
+\item Transaction cost assumptions
+\item Slippage modeling
+\end{itemize}
+
+\section{Backtesting Framework}
+
+The strategy is implemented in Python using the following steps:
+
+\begin{enumerate}
+\item Data retrieval from Alpaca API
+\item Hedge ratio $\beta$ estimated on training set only (no lookahead)
+\item Spread and z-score computation with rolling mean/std from training window
+\item Signal generation (entry at $|Z| > 2$, exit at $Z$ crosses 0)
+\item Trade execution simulation
+\item Portfolio performance tracking
+\end{enumerate}
+
+Assumptions include transaction costs, shorting feasibility, and capital 
+allocation rules.
+
+\section{Performance Evaluation}
+
+We evaluate strategy performance using:
+
+\begin{itemize}
+\item Total Profit and Loss (PnL)
+\item Annualized Return
+\item Sharpe Ratio
+\item Maximum Drawdown
+\item Win Rate
+\item Average Trade Duration
+\item Turnover and Exposure
+\end{itemize}
+
+Benchmarks:
+
+\begin{itemize}
+\item Buy-and-hold NVDA
+\item Buy-and-hold AMD
+\item Market index benchmark
+\end{itemize}
+
+\section{Results and Interpretation}
+
+\subsection{Backtest Results}
+
+\begin{center}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{Train} & \textbf{Test} \\
+\midrule
+Total PnL & $-58.14$ & $-93.16$ \\
+Sharpe ratio & $-0.03$ & $-0.21$ \\
+Max drawdown & 1142.68 & 520.60 \\
+Win rate & 55.6\% & 0.0\% \\
+Avg duration (bars) & 16.0 & 0.0 \\
+\# trades & 36 & 0 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Interpretation}
+
+The training period produced 36 trades with a 55.6\% win rate, but negative total PnL ($-58.14$) and near-zero Sharpe ratio ($-0.03$), indicating the strategy did not generate risk-adjusted alpha in-sample. The test period produced \textbf{no trades}: the z-score never crossed the $\pm 2$ entry thresholds when using the fixed mean and standard deviation from the training set. This suggests a regime shift or structural change between train and test periods---the spread in the test window may have remained within a different range relative to the training normalization.
+
+The negative test PnL ($-93.16$) with zero trades is attributable to mark-to-market on any open positions or to the equity curve calculation; with no trades, the strategy effectively remained flat. The results highlight the importance of out-of-sample validation and the risk of overfitting to historical regimes.
+
+\subsection{Additional Analysis}
+
+\begin{itemize}
+\item Sensitivity analysis of thresholds ($\pm 2$)
+\item Stability of hedge ratio over time
+\item Performance across volatility regimes
+\end{itemize}
+
+\section{Risks and Limitations}
+
+Potential risks include:
+
+\begin{itemize}
+\item Structural breaks in relationship (evidenced by zero test trades)
+\item Cointegration failure
+\item Execution risk and slippage
+\item Shorting constraints
+\item Sector-specific shocks
+\item Overfitting to historical data
+\end{itemize}
+
+We also discuss challenges in implementing the strategy in live markets.
+
+\section{Extensions and Improvements}
+
+Future enhancements may include:
+
+\begin{itemize}
+\item Dynamic hedge ratios using Kalman filters
+\item Machine learning signal generation
+\item Multi-asset semiconductor basket
+\item Volatility-adjusted entry thresholds
+\item Intraday implementation
+\item Rolling z-score normalization for test (with strict no-lookahead)
+\end{itemize}
+
+\section{Conclusion}
+
+The NVDA/AMD pairs strategy showed evidence of cointegration (ADF $p = 0.045$) and a reasonable half-life of 35 days. However, backtest results were negative in both training and testing. The test period produced no trades due to the spread remaining within the entry bands under fixed training normalization, suggesting potential regime change. The hypothesis of profitable mean reversion was not supported by the out-of-sample results. Practical implications include the need for adaptive normalization, regime detection, and robust out-of-sample validation before live deployment.
+
+\section{Team Contributions}
+
+\begin{itemize}
+\item Member 1: [Contribution]
+\item Member 2: [Contribution]
+\item Member 3: [Contribution]
+\end{itemize}
+
+\section{References}
+
+\begin{itemize}
+\item Academic papers
+\item Data sources: Alpaca API
+\item Online resources
+\end{itemize}
+
+\end{document}
