@@ -172,6 +172,12 @@ Use the notebooks in `notebooks/`:
 
 They download bars from Alpaca and save raw/clean CSVs to `data/`.
 
+For NVDA and AMD multi-year daily (or hourly) data:
+```bash
+python pipeline/fetch_pairs.py --years 5
+```
+Saves `data/NVDA_1Day_stock_alpaca_clean.csv` and `data/AMD_1Day_stock_alpaca_clean.csv` (or `1Hour` if daily is unavailable).
+
 ## Build your own strategy
 Open `strategies/strategy_base.py` and edit `TemplateStrategy` (recommended), or add your own class.
 The backtester expects:

@@ -1,5 +1,6 @@
 numpy>=1.26.0
 pandas>=2.0.0
 matplotlib>=3.8.0
+statsmodels>=0.14.0
 alpaca-trade-api>=3.2.0
 python-dotenv>=1.0.0

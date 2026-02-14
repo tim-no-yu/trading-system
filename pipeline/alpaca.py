@@ -26,9 +26,12 @@ def _ensure_dir(path: Path) -> Path:
 
 
 def _load_env() -> None:
+    root = Path(__file__).resolve().parents[1]
     env_paths = [
         Path.cwd() / ".env",
-        Path(__file__).resolve().parents[1] / ".env",
+        root / ".env",
+        Path.cwd() / ".env.example",
+        root / ".env.example",
     ]
     loaded = False
     for path in env_paths:
