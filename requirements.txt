@@ -4,3 +4,4 @@ matplotlib>=3.8.0
 statsmodels>=0.14.0
 alpaca-trade-api>=3.2.0
 python-dotenv>=1.0.0
+pykalman>=0.9.5

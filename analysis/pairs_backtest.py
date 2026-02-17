@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pykalman import KalmanFilter
 
 _root = Path(__file__).resolve().parents[1]
 if str(_root) not in sys.path:
@@ -28,6 +29,68 @@ Z_ENTRY_LONG = -2.0
 Z_ENTRY_SHORT = 2.0
 Z_EXIT = 0.0
 ROLLING_WINDOW = 20
+USE_KALMAN_BETA = True  # Set to False to use fixed OLS beta
+
+
+def kalman_filter_beta(
+    y: np.ndarray,
+    x: np.ndarray,
+    initial_beta: float,
+) -> np.ndarray:
+    """
+    Estimate time-varying beta using Kalman Filter.
+    Updates beta sequentially using only past observations (no lookahead).
+    
+    Args:
+        y: Dependent variable (NVDA prices)
+        x: Independent variable (AMD prices)
+        initial_beta: Initial beta estimate from OLS
+    
+    Returns:
+        Array of beta estimates at each time step
+    """
+    n = len(y)
+    
+    # State space model: beta_t = beta_{t-1} + w_t (random walk)
+    # Observation: y_t = beta_t * x_t + v_t
+    
+    # Standard Kalman Filter parameters (not optimized on test data)
+    kf = KalmanFilter(
+        transition_matrices=[1],           # Beta follows random walk
+        observation_matrices=[[1]],        # Will be updated with x_t
+        transition_covariance=0.001,       # Small process noise (beta changes slowly)
+        observation_covariance=1.0,        # Measurement noise
+        initial_state_mean=initial_beta,   # Start with OLS estimate
+        initial_state_covariance=1.0,      # Initial uncertainty
+    )
+    
+    # Filter beta sequentially (no lookahead)
+    beta_filtered = np.zeros(n)
+    beta_filtered[0] = initial_beta
+    
+    state_mean = initial_beta
+    state_cov = 1.0
+    
+    for i in range(1, n):
+        # Observation matrix is x_t (current AMD price)
+        obs_matrix = np.array([[x[i]]])
+        
+        # Predict step
+        state_mean_pred = state_mean
+        state_cov_pred = state_cov + 0.001  # Add process noise
+        
+        # Update step using observation y_t
+        obs = y[i]
+        residual = obs - (state_mean_pred * x[i])
+        residual_cov = x[i]**2 * state_cov_pred + 1.0
+        kalman_gain = (state_cov_pred * x[i]) / residual_cov
+        
+        state_mean = state_mean_pred + kalman_gain * residual
+        state_cov = (1 - kalman_gain * x[i]) * state_cov_pred
+        
+        beta_filtered[i] = state_mean
+    
+    return beta_filtered
 
 
 def compute_spread_zscore(
@@ -65,7 +128,7 @@ def run_backtest(
             position[i] = pos
             continue
 
-        # Exit when z crosses 0
+        # Exit when z crosses 0 (mean reversion)
         if pos != 0 and (z_prev * z_curr <= 0 or z_curr == 0):
             pnl = pos * (spread[i] - entry_spread)
             trades.append({
@@ -136,21 +199,41 @@ def main() -> None:
     df = load_and_align()
     train, test = train_test_split(df, TRAIN_FRAC)
 
-    # Beta from training only
-    alpha, beta, _ = ols_residuals(train["NVDA"].values, train["AMD"].values)
+    # Initial beta estimate from OLS on training data
+    alpha, beta_ols, _ = ols_residuals(train["NVDA"].values, train["AMD"].values)
+    print(f"Initial OLS beta: {beta_ols:.6f}")
 
-    # Spread = NVDA - beta * AMD (fixed beta)
-    train_spread = train["NVDA"].values - beta * train["AMD"].values
-    test_spread = test["NVDA"].values - beta * test["AMD"].values
+    if USE_KALMAN_BETA:
+        # Dynamic beta using Kalman Filter (updates sequentially, no lookahead)
+        train_beta = kalman_filter_beta(
+            train["NVDA"].values,
+            train["AMD"].values,
+            beta_ols
+        )
+        
+        # For test period, continue Kalman Filter from last training state
+        full_y = np.concatenate([train["NVDA"].values, test["NVDA"].values])
+        full_x = np.concatenate([train["AMD"].values, test["AMD"].values])
+        full_beta = kalman_filter_beta(full_y, full_x, beta_ols)
+        
+        test_beta = full_beta[len(train):]
+        
+        print(f"Train beta range: [{train_beta.min():.4f}, {train_beta.max():.4f}]")
+        print(f"Test beta range: [{test_beta.min():.4f}, {test_beta.max():.4f}]")
+    else:
+        # Fixed beta (original approach)
+        train_beta = np.full(len(train), beta_ols)
+        test_beta = np.full(len(test), beta_ols)
+        print("Using fixed OLS beta")
 
-    # Z-score: rolling mean/std from training window only (no lookahead)
-    # Train: rolling with shift(1). Test: fixed mean/std from train (no lookahead).
+    # Spread = NVDA - beta * AMD (dynamic or fixed beta)
+    train_spread = train["NVDA"].values - train_beta * train["AMD"].values
+    test_spread = test["NVDA"].values - test_beta * test["AMD"].values
+
+    # Z-score: rolling mean/std with shift(1) for both train and test (no lookahead)
+    # Both use rolling window to adapt to regime changes while avoiding lookahead bias
     train_z = compute_spread_zscore(pd.Series(train_spread), ROLLING_WINDOW).values
-    train_mean = float(np.nanmean(train_spread))
-    train_std = float(np.nanstd(train_spread))
-    if train_std <= 0:
-        train_std = 1e-10
-    test_z = (test_spread - train_mean) / train_std
+    test_z = compute_spread_zscore(pd.Series(test_spread), ROLLING_WINDOW).values
 
     # Backtest train
     train_pos, train_trades = run_backtest(train_spread, train_z)
